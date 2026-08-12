@@ -6,6 +6,7 @@ import { defineConfig } from 'vite';
 // disk, bypassing the browser's download flow (which blocks programmatic,
 // non-gesture downloads). POST /__save?name=foo.webm with the blob body.
 export default defineConfig({
+  base: './',
   plugins: [
     {
       name: 'save-recording',
