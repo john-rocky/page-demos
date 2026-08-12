@@ -210,16 +210,17 @@ async function boot() {
 // --- showcase: several exotic animals in sequence, wider look-around orbit --
 // Sources are Wikimedia Commons; licenses noted in SHOWCASE_CREDITS.md. Final
 // image sourcing/attribution for any public post is the owner's to confirm.
-// Attribution-free only: every image is Public Domain or CC0 (no credit line
-// required). Dense subjects with clean/receding backgrounds. See
-// SHOWCASE_CREDITS.md. Verify each in the demo before rendering the reel.
+// Attribution-free (Pexels License: no credit required). Each hand-picked in
+// the demo for a dense point cloud + readable subject. See SHOWCASE_CREDITS.md.
+const PEX = (id) =>
+  `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=1200`;
 const SHOWCASE = [
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Ara_macao_408004141.jpg/1280px-Ara_macao_408004141.jpg', label: 'Scarlet macaw', license: 'CC0' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Common_foxes_in_the_snow.jpg/1280px-Common_foxes_in_the_snow.jpg', label: 'Red fox', license: 'Public domain' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Australia_green_tree_frog_%28Litoria_caerulea%29.jpg/1280px-Australia_green_tree_frog_%28Litoria_caerulea%29.jpg', label: 'Green tree frog', license: 'Public domain' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Chameleon_on_a_coconut_tree.jpg/1280px-Chameleon_on_a_coconut_tree.jpg', label: 'Chameleon', license: 'CC0' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Synchiropus_splendidus_1prg.jpg/1280px-Synchiropus_splendidus_1prg.jpg', label: 'Mandarinfish', license: 'CC0' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Common_clownfish.jpg/1280px-Common_clownfish.jpg', label: 'Clownfish', license: 'Public domain' },
+  { url: PEX(16948625), label: 'Scarlet macaw', license: 'Pexels' },
+  { url: PEX(6724234), label: 'Red fox', license: 'Pexels' },
+  { url: PEX(38271570), label: 'Frog', license: 'Pexels' },
+  { url: PEX(6407978), label: 'Crocodile', license: 'Pexels' },
+  { url: PEX(3046629), label: 'Octopus', license: 'Pexels' },
+  { url: PEX(31150018), label: 'Clownfish', license: 'Pexels' },
 ];
 
 function delay(ms) {

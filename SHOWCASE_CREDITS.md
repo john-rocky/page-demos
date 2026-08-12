@@ -1,17 +1,17 @@
-# Showcase images — attribution-free (Public Domain / CC0)
+# Showcase images — attribution-free (Pexels)
 
-Every image below is Public Domain or CC0, so **no credit line is required**
-when posting. Sources are Wikimedia Commons. (The earlier CC BY-SA set was
-replaced because it required attribution.)
+All six are from Pexels under the Pexels License: free to use, **no
+attribution required**, no sign-up. Hand-picked in the demo for a dense point
+cloud and a readable subject.
 
-| # | Animal (class) | License | Wikimedia Commons file |
-|---|---|---|---|
-| 1 | Scarlet macaw (bird) | CC0 | Ara macao 408004141.jpg |
-| 2 | Red fox (mammal) | Public domain | Common foxes in the snow.jpg |
-| 3 | Green tree frog (amphibian) | Public domain | Australia green tree frog (Litoria caerulea).jpg |
-| 4 | Chameleon (reptile) | CC0 | Chameleon on a coconut tree.jpg |
-| 5 | Mandarinfish (fish) | CC0 | Synchiropus splendidus 1prg.jpg |
-| 6 | Clownfish (fish) | Public domain | Common clownfish.jpg |
+| # | Animal (class) | Pexels photo ID |
+|---|---|---|
+| 1 | Scarlet macaw (bird) | 16948625 |
+| 2 | Red fox (mammal) | 6724234 |
+| 3 | Frog (amphibian) | 38271570 |
+| 4 | Crocodile (reptile) | 6407978 |
+| 5 | Octopus (cephalopod) | 3046629 |
+| 6 | Clownfish (fish) | 31150018 |
 
-Status: URLs swapped; NOT yet re-rendered/verified in the demo (pending a
-visual check that each is a dense single subject).
+Pexels License summary: use for free, personal & commercial, no credit
+needed. (A credit is appreciated but not required.)
