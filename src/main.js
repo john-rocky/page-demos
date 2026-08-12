@@ -195,10 +195,19 @@ cropCanvas.height = SIZE;
 const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
 
 function preprocess(source, sourceWidth, sourceHeight) {
-  const side = Math.min(sourceWidth, sourceHeight);
-  const sx = (sourceWidth - side) / 2;
-  const sy = (sourceHeight - side) / 2;
-  cropCtx.drawImage(source, sx, sy, side, side, 0, 0, SIZE, SIZE);
+  // Contain-fit (letterbox), NOT center-crop: the whole photo must survive so
+  // the subject is never cut off. The padded margins are recorded and later
+  // excluded from the point cloud so they don't become a flat backdrop.
+  const scale = Math.min(SIZE / sourceWidth, SIZE / sourceHeight);
+  const drawW = Math.round(sourceWidth * scale);
+  const drawH = Math.round(sourceHeight * scale);
+  const offX = Math.floor((SIZE - drawW) / 2);
+  const offY = Math.floor((SIZE - drawH) / 2);
+  // Pad with edge-ish neutral so MoGe sees a plausible background rather than a
+  // hard black frame; the pad is dropped from the cloud regardless.
+  cropCtx.fillStyle = '#7f7f7f';
+  cropCtx.fillRect(0, 0, SIZE, SIZE);
+  cropCtx.drawImage(source, 0, 0, sourceWidth, sourceHeight, offX, offY, drawW, drawH);
   const { data } = cropCtx.getImageData(0, 0, SIZE, SIZE);
   const plane = SIZE * SIZE;
   const nchw = new Float32Array(3 * plane);
@@ -207,7 +216,12 @@ function preprocess(source, sourceWidth, sourceHeight) {
     nchw[plane + i] = data[i * 4 + 1] / 255;
     nchw[2 * plane + i] = data[i * 4 + 2] / 255;
   }
-  return { nchw, rgba: data };
+  // Valid = inside the drawn content rect (1 = photo pixel, 0 = padding).
+  const valid = new Uint8Array(plane);
+  for (let y = offY; y < offY + drawH; y++) {
+    for (let x = offX; x < offX + drawW; x++) valid[y * SIZE + x] = 1;
+  }
+  return { nchw, rgba: data, valid };
 }
 
 function sampleAbsMax(array) {
@@ -251,15 +265,21 @@ async function infer(nchw) {
 
 // --- point cloud ----------------------------------------------------------
 
-function buildCloud(points, mask, rgba) {
+function buildCloud(points, mask, rgba, valid) {
   const plane = SIZE * SIZE;
   const positions = [];
   const colors = [];
-  const border = 4; // photo-border pixels have ambiguous depth and smear into "curtains"
+  const border = 2; // trim 1-2px inside the content edge (ambiguous-depth rim)
   for (let i = 0; i < plane; i++) {
+    if (!valid[i]) continue; // letterbox padding — not part of the photo
     const px = i % SIZE;
     const py = (i / SIZE) | 0;
-    if (px < border || px >= SIZE - border || py < border || py >= SIZE - border) continue;
+    // Skip pixels adjacent to a padding pixel (the content-edge rim smears).
+    if (
+      !valid[i - 1] || !valid[i + 1] ||
+      !valid[i - SIZE] || !valid[i + SIZE] ||
+      px < border || px >= SIZE - border || py < border || py >= SIZE - border
+    ) continue;
     if (mask[i] <= MASK_THRESHOLD) continue;
     const x = points[i * 3];
     const y = points[i * 3 + 1];
@@ -304,9 +324,10 @@ function buildCloud(points, mask, rgba) {
     zs.push(z);
   }
 
-  // Robust centroid (median per axis) — the subject's mass, ignoring the
-  // smeared silhouette edges and far background. The orbit pivots here so the
-  // subject stays centered and never translates off-frame while swinging.
+  // Robust screen-plane framing from percentiles (ignores the smeared
+  // silhouette rim and stray points): center on the 2–98% box, size on its
+  // half-extent. The orbit pivots on this center so the subject stays put,
+  // and the viewing distance fits that extent with margin.
   const median = (arr) => {
     const s = arr.slice().sort((a, b) => a - b);
     return s[s.length >> 1];
@@ -333,21 +354,21 @@ async function runOnImage(source) {
   const height = source.videoHeight ?? source.height;
   status('Running…');
   try {
-    const { nchw, rgba } = preprocess(source, width, height);
+    const { nchw, rgba, valid } = preprocess(source, width, height);
     const { points, mask, elapsed } = await infer(nchw);
     if (cloud) {
       scene.remove(cloud);
       cloud.geometry.dispose();
       cloud.material.dispose();
     }
-    cloud = buildCloud(points, mask, rgba);
+    cloud = buildCloud(points, mask, rgba, valid);
     scene.add(cloud);
     // Pivot the orbit on the subject's robust centroid so it stays centered
     // (never translates off-frame); keep the tuned viewing distance that
     // frames the subject large. Start on the capture axis so the cloud opens
     // looking exactly like the photo.
     subjectCenter = cloud.userData.center.clone();
-    viewDistance = DEPTH_ANCHOR; // matches the tuned framing of the capture view
+    viewDistance = DEPTH_ANCHOR; // tuned framing: subject large, whole photo shown
     autoOrbit = true;
     orbitClock = 0;
     camera.position.set(subjectCenter.x, subjectCenter.y, subjectCenter.z + viewDistance);
