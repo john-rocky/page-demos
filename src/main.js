@@ -210,14 +210,16 @@ async function boot() {
 // --- showcase: several exotic animals in sequence, wider look-around orbit --
 // Sources are Wikimedia Commons; licenses noted in SHOWCASE_CREDITS.md. Final
 // image sourcing/attribution for any public post is the owner's to confirm.
-// One striking real photo per animal class — diversity over "another lizard".
+// One dense, striking real photo per animal class — chosen so the point
+// cloud fills out (no sparse subjects like feathers-in-flight or a thin
+// mantis), with clean/receding backgrounds. Bold bookends: macaw → clownfish.
 const SHOWCASE = [
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Barn_Owl_R1_1791.jpg/1280px-Barn_Owl_R1_1791.jpg', label: 'Barn owl' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Scarlet_macaw_%28Ara_macao_cyanopterus%29_head_Copan.jpg/1280px-Scarlet_macaw_%28Ara_macao_cyanopterus%29_head_Copan.jpg', label: 'Scarlet macaw' },
   { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Portrait_of_a_red_fox_in_Rautas_fj%C3%A4llurskog.jpg/1280px-Portrait_of_a_red_fox_in_Rautas_fj%C3%A4llurskog.jpg', label: 'Red fox' },
   { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Dendrobates_azureus_%28Dendrobates_tinctorius%29_Edit.jpg/1280px-Dendrobates_azureus_%28Dendrobates_tinctorius%29_Edit.jpg', label: 'Poison dart frog' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg/1280px-Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg', label: 'Octopus' },
   { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg/1280px-Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg', label: 'Panther chameleon' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/European_praying_mantis_%28Mantis_religiosa%29_green_female_Dobruja.jpg/1280px-European_praying_mantis_%28Mantis_religiosa%29_green_female_Dobruja.jpg', label: 'Praying mantis' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg/1280px-Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg', label: 'Octopus' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Amphiprion_ocellaris_%28Clown_anemonefish%29_by_Nick_Hobgood.jpg/1280px-Amphiprion_ocellaris_%28Clown_anemonefish%29_by_Nick_Hobgood.jpg', label: 'Clownfish' },
 ];
 
 function delay(ms) {
