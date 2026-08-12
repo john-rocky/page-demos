@@ -70,10 +70,20 @@ camera.position.set(0, 0, 2.6);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 2.6;
+
+// Instead of a full auto-rotate (which eventually shows the hollow back and
+// blows up the far-background points as the camera swings close), gently
+// oscillate the viewpoint left↔right around the capture direction — enough
+// parallax to read as 3D, always looking at the subject's good side.
+let autoOrbit = true;
+let orbitClock = 0;
+const ORBIT_AMPLITUDE = 0.32; // radians (~18°) each way — enough parallax, no background streak
+const ORBIT_PERIOD = 7; // seconds per full left-right-left cycle
+// Set per-cloud so the whole subject stays framed as the camera swings.
+let subjectCenter = new THREE.Vector3(0, 0, -DEPTH_ANCHOR);
+let viewDistance = DEPTH_ANCHOR;
 renderer.domElement.addEventListener('pointerdown', () => {
-  controls.autoRotate = false;
+  autoOrbit = false;
 });
 
 function resize() {
@@ -85,8 +95,25 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+let lastFrame = performance.now();
 renderer.setAnimationLoop(() => {
-  controls.update();
+  const now = performance.now();
+  const dt = Math.min((now - lastFrame) / 1000, 0.05);
+  lastFrame = now;
+  if (autoOrbit && cloud) {
+    orbitClock += dt;
+    const angle = ORBIT_AMPLITUDE * Math.sin((orbitClock / ORBIT_PERIOD) * Math.PI * 2);
+    // Orbit around the subject's own centroid at the framing distance, so the
+    // whole subject stays centered and in-frame as it swings.
+    camera.position.set(
+      subjectCenter.x + Math.sin(angle) * viewDistance,
+      subjectCenter.y,
+      subjectCenter.z + Math.cos(angle) * viewDistance,
+    );
+    camera.lookAt(subjectCenter);
+  } else {
+    controls.update();
+  }
   renderer.render(scene, camera);
 });
 
@@ -228,7 +255,11 @@ function buildCloud(points, mask, rgba) {
   const plane = SIZE * SIZE;
   const positions = [];
   const colors = [];
+  const border = 4; // photo-border pixels have ambiguous depth and smear into "curtains"
   for (let i = 0; i < plane; i++) {
+    const px = i % SIZE;
+    const py = (i / SIZE) | 0;
+    if (px < border || px >= SIZE - border || py < border || py >= SIZE - border) continue;
     if (mask[i] <= MASK_THRESHOLD) continue;
     const x = points[i * 3];
     const y = points[i * 3 + 1];
@@ -251,21 +282,36 @@ function buildCloud(points, mask, rgba) {
   for (let i = 0; i < count; i += step) depthSample.push(-positions[i * 3 + 2]);
   depthSample.sort((a, b) => a - b);
   const medianDepth = Math.max(depthSample[Math.floor(depthSample.length / 2)], 1e-6);
-  const maxDepth = medianDepth * 6;
+  const maxDepth = medianDepth * 3.5;
+  const minDepth = medianDepth * 0.45; // trim the near lip (front sand edge streaks)
   const fit = DEPTH_ANCHOR / medianDepth;
 
   const keptPositions = [];
   const keptColors = [];
+  const xs = [];
+  const ys = [];
+  const zs = [];
   for (let i = 0; i < count; i++) {
     const depth = -positions[i * 3 + 2];
-    if (depth > maxDepth) continue;
-    keptPositions.push(
-      positions[i * 3] * fit,
-      positions[i * 3 + 1] * fit,
-      positions[i * 3 + 2] * fit,
-    );
+    if (depth > maxDepth || depth < minDepth) continue;
+    const x = positions[i * 3] * fit;
+    const y = positions[i * 3 + 1] * fit;
+    const z = positions[i * 3 + 2] * fit;
+    keptPositions.push(x, y, z);
     keptColors.push(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]);
+    xs.push(x);
+    ys.push(y);
+    zs.push(z);
   }
+
+  // Robust centroid (median per axis) — the subject's mass, ignoring the
+  // smeared silhouette edges and far background. The orbit pivots here so the
+  // subject stays centered and never translates off-frame while swinging.
+  const median = (arr) => {
+    const s = arr.slice().sort((a, b) => a - b);
+    return s[s.length >> 1];
+  };
+  const center = new THREE.Vector3(median(xs), median(ys), median(zs));
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(keptPositions, 3));
@@ -276,7 +322,9 @@ function buildCloud(points, mask, rgba) {
     vertexColors: true,
     sizeAttenuation: true,
   });
-  return new THREE.Points(geometry, material);
+  const cloudPoints = new THREE.Points(geometry, material);
+  cloudPoints.userData.center = center;
+  return cloudPoints;
 }
 
 async function runOnImage(source) {
@@ -294,11 +342,17 @@ async function runOnImage(source) {
     }
     cloud = buildCloud(points, mask, rgba);
     scene.add(cloud);
-    // Start at the capture viewpoint: the cloud looks exactly like the photo,
-    // then the slow orbit around the subject reveals the parallax.
-    controls.autoRotate = true;
-    camera.position.set(0, 0, 0.001);
-    controls.target.set(0, 0, -DEPTH_ANCHOR);
+    // Pivot the orbit on the subject's robust centroid so it stays centered
+    // (never translates off-frame); keep the tuned viewing distance that
+    // frames the subject large. Start on the capture axis so the cloud opens
+    // looking exactly like the photo.
+    subjectCenter = cloud.userData.center.clone();
+    viewDistance = DEPTH_ANCHOR; // matches the tuned framing of the capture view
+    autoOrbit = true;
+    orbitClock = 0;
+    camera.position.set(subjectCenter.x, subjectCenter.y, subjectCenter.z + viewDistance);
+    camera.lookAt(subjectCenter);
+    controls.target.copy(subjectCenter);
 
     runCount += 1;
     latencyValueEl.textContent = `${elapsed.toFixed(0)} ms`;
