@@ -210,16 +210,16 @@ async function boot() {
 // --- showcase: several exotic animals in sequence, wider look-around orbit --
 // Sources are Wikimedia Commons; licenses noted in SHOWCASE_CREDITS.md. Final
 // image sourcing/attribution for any public post is the owner's to confirm.
-// One dense, striking real photo per animal class — chosen so the point
-// cloud fills out (no sparse subjects like feathers-in-flight or a thin
-// mantis), with clean/receding backgrounds. Bold bookends: macaw → clownfish.
+// Attribution-free only: every image is Public Domain or CC0 (no credit line
+// required). Dense subjects with clean/receding backgrounds. See
+// SHOWCASE_CREDITS.md. Verify each in the demo before rendering the reel.
 const SHOWCASE = [
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Scarlet_macaw_%28Ara_macao_cyanopterus%29_head_Copan.jpg/1280px-Scarlet_macaw_%28Ara_macao_cyanopterus%29_head_Copan.jpg', label: 'Scarlet macaw' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Portrait_of_a_red_fox_in_Rautas_fj%C3%A4llurskog.jpg/1280px-Portrait_of_a_red_fox_in_Rautas_fj%C3%A4llurskog.jpg', label: 'Red fox' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Dendrobates_azureus_%28Dendrobates_tinctorius%29_Edit.jpg/1280px-Dendrobates_azureus_%28Dendrobates_tinctorius%29_Edit.jpg', label: 'Poison dart frog' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg/1280px-Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg', label: 'Panther chameleon' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg/1280px-Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg', label: 'Octopus' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Amphiprion_ocellaris_%28Clown_anemonefish%29_by_Nick_Hobgood.jpg/1280px-Amphiprion_ocellaris_%28Clown_anemonefish%29_by_Nick_Hobgood.jpg', label: 'Clownfish' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Ara_macao_408004141.jpg/1280px-Ara_macao_408004141.jpg', label: 'Scarlet macaw', license: 'CC0' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Common_foxes_in_the_snow.jpg/1280px-Common_foxes_in_the_snow.jpg', label: 'Red fox', license: 'Public domain' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Australia_green_tree_frog_%28Litoria_caerulea%29.jpg/1280px-Australia_green_tree_frog_%28Litoria_caerulea%29.jpg', label: 'Green tree frog', license: 'Public domain' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Chameleon_on_a_coconut_tree.jpg/1280px-Chameleon_on_a_coconut_tree.jpg', label: 'Chameleon', license: 'CC0' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Synchiropus_splendidus_1prg.jpg/1280px-Synchiropus_splendidus_1prg.jpg', label: 'Mandarinfish', license: 'CC0' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Common_clownfish.jpg/1280px-Common_clownfish.jpg', label: 'Clownfish', license: 'Public domain' },
 ];
 
 function delay(ms) {
