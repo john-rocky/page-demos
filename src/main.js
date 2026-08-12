@@ -210,11 +210,13 @@ async function boot() {
 // --- showcase: several exotic animals in sequence, wider look-around orbit --
 // Sources are Wikimedia Commons; licenses noted in SHOWCASE_CREDITS.md. Final
 // image sourcing/attribution for any public post is the owner's to confirm.
+// One striking real photo per animal class — diversity over "another lizard".
 const SHOWCASE = [
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Thornydevil.jpg/1280px-Thornydevil.jpg', label: 'Thorny devil' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Barn_Owl_R1_1791.jpg/1280px-Barn_Owl_R1_1791.jpg', label: 'Barn owl' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Portrait_of_a_red_fox_in_Rautas_fj%C3%A4llurskog.jpg/1280px-Portrait_of_a_red_fox_in_Rautas_fj%C3%A4llurskog.jpg', label: 'Red fox' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Dendrobates_azureus_%28Dendrobates_tinctorius%29_Edit.jpg/1280px-Dendrobates_azureus_%28Dendrobates_tinctorius%29_Edit.jpg', label: 'Poison dart frog' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg/1280px-Pulpo_com%C3%BAn_%28Octopus_vulgaris%29%2C_Parque_natural_de_la_Arr%C3%A1bida%2C_Portugal%2C_2020-07-21%2C_DD_33.jpg', label: 'Octopus' },
   { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg/1280px-Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg', label: 'Panther chameleon' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Endangered_species_Iguana_Iguana_from_Margarita_Island.jpg/1280px-Endangered_species_Iguana_Iguana_from_Margarita_Island.jpg', label: 'Green iguana' },
-  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Chlamydosaurus_kingii_01.jpg/1280px-Chlamydosaurus_kingii_01.jpg', label: 'Frilled lizard' },
   { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/European_praying_mantis_%28Mantis_religiosa%29_green_female_Dobruja.jpg/1280px-European_praying_mantis_%28Mantis_religiosa%29_green_female_Dobruja.jpg', label: 'Praying mantis' },
 ];
 
@@ -222,13 +224,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Place the camera for a scripted look-around at normalized time u∈[0,1):
- * hold at the capture axis briefly, then a wide yaw sweep + gentle pitch. */
-function poseCamera(u) {
-  const hold = 0.12;
-  const p = u < hold ? 0 : (u - hold) / (1 - hold);
-  const yaw = 0.55 * Math.sin(p * Math.PI * 2);
-  const pitch = 0.16 * Math.sin(p * Math.PI * 4);
+/** Place the camera for the orbit phase at progress p∈[0,1]. A single-view
+ * point cloud has no geometry on its far side, so the swing is deliberately
+ * shallow (±~15° yaw, a touch of pitch) — enough parallax to read as 3D
+ * without turning far enough to expose the hollow back. */
+function poseCamera(p) {
+  const yaw = 0.26 * Math.sin(p * Math.PI * 2);
+  const pitch = 0.08 * Math.sin(p * Math.PI * 2 + Math.PI / 2);
   const horiz = Math.cos(pitch) * viewDistance;
   camera.position.set(
     subjectCenter.x + Math.sin(yaw) * horiz,
@@ -238,6 +240,17 @@ function poseCamera(u) {
   camera.lookAt(subjectCenter);
 }
 
+/** Draw the source image contain-fit (letterboxed) into a 2D context of
+ * WxH — the same "whole photo" the point cloud is built from. */
+function drawPhoto(ctx, img, W, H) {
+  const scale = Math.min(W / img.width, H / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  ctx.fillStyle = '#0b0d10';
+  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
+
 /** Deterministic frame dump → server → ffmpeg (reliable where canvas
  * captureStream yields nothing). Renders each animal for FRAMES_PER frames
  * at a fixed 16:9 size, posts each as a JPEG the dev server writes to disk. */
@@ -245,8 +258,11 @@ async function renderFramesShowcase() {
   const W = 1280;
   const H = 720;
   const FPS = 30;
-  const SECONDS_PER = 3.5;
-  const FRAMES_PER = Math.round(FPS * SECONDS_PER);
+  // Per-animal beat: hold the 2D photo, dissolve into points, then orbit.
+  const PHOTO = Math.round(FPS * 0.9);
+  const FADE = Math.round(FPS * 0.5);
+  const ORBIT = Math.round(FPS * 2.6);
+  const FRAMES_PER = PHOTO + FADE + ORBIT;
   document.querySelector('.panel').style.display = 'none';
   autoOrbit = false;
   renderer.setAnimationLoop(null); // we render each frame by hand
@@ -261,22 +277,47 @@ async function renderFramesShowcase() {
   const cctx = capture.getContext('2d');
 
   let frameIndex = 0;
+  const postFrame = async () => {
+    const jpeg = await new Promise((r) => capture.toBlob(r, 'image/jpeg', 0.92));
+    const name = `frames/f_${String(frameIndex).padStart(4, '0')}.jpg`;
+    await fetch(`/__save?name=${name}`, { method: 'POST', body: jpeg });
+    frameIndex += 1;
+  };
+
   for (const item of SHOWCASE) {
+    let bitmap;
     try {
       const blob = await (await fetch(item.url)).blob();
-      await runOnImage(await createImageBitmap(blob));
+      bitmap = await createImageBitmap(blob);
+      await runOnImage(bitmap);
       autoOrbit = false; // we drive the camera per frame
     } catch {
       continue;
     }
-    for (let f = 0; f < FRAMES_PER; f++) {
-      poseCamera(f / FRAMES_PER);
+    // Camera holds at the capture axis through photo + fade (cloud aligns
+    // with the photo there); orbit only after.
+    poseCamera(0);
+    renderer.render(scene, camera);
+
+    // Phase 1 — the flat photo.
+    drawPhoto(cctx, bitmap, W, H);
+    for (let f = 0; f < PHOTO; f++) await postFrame();
+
+    // Phase 2 — dissolve the photo into the point cloud (same viewpoint).
+    for (let f = 0; f < FADE; f++) {
+      drawPhoto(cctx, bitmap, W, H);
+      cctx.globalAlpha = (f + 1) / FADE;
+      cctx.drawImage(renderer.domElement, 0, 0, W, H);
+      cctx.globalAlpha = 1;
+      await postFrame();
+    }
+
+    // Phase 3 — the point cloud, gentle orbit.
+    for (let f = 0; f < ORBIT; f++) {
+      poseCamera(f / ORBIT);
       renderer.render(scene, camera);
       cctx.drawImage(renderer.domElement, 0, 0, W, H);
-      const jpeg = await new Promise((r) => capture.toBlob(r, 'image/jpeg', 0.92));
-      const name = `frames/f_${String(frameIndex).padStart(4, '0')}.jpg`;
-      await fetch(`/__save?name=${name}`, { method: 'POST', body: jpeg });
-      frameIndex += 1;
+      await postFrame();
     }
     status(`captured ${item.label}`);
   }
@@ -311,10 +352,10 @@ async function runShowcase(record) {
       const blob = await (await fetch(item.url)).blob();
       const bitmap = await createImageBitmap(blob);
       await runOnImage(bitmap);
-      // Wider, richer look-around for the showcase; reset the clock so each
+      // Shallow look-around (no hollow-back exposure); reset the clock so each
       // animal starts at the capture view (opens as the photo) then explores.
-      orbitYawAmp = 0.55;
-      orbitPitchAmp = 0.18;
+      orbitYawAmp = 0.26;
+      orbitPitchAmp = 0.08;
       orbitClock = 0;
       await delay(4200); // ~2/3 of one look-around cycle, ending near center
     } catch {
