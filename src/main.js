@@ -58,9 +58,15 @@ function status(text, pct = null) {
 // --- three.js scene -------------------------------------------------------
 
 const stage = document.getElementById('stage');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// preserveDrawingBuffer so canvas.captureStream() reliably reads finished
+// frames (WebGL clears the buffer after present otherwise).
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 stage.appendChild(renderer.domElement);
+
+// When recording the showcase, we drive frames explicitly so the captured
+// stream matches the rendered frames exactly.
+let recordTrack = null;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0d10);
@@ -77,7 +83,10 @@ controls.dampingFactor = 0.08;
 // parallax to read as 3D, always looking at the subject's good side.
 let autoOrbit = true;
 let orbitClock = 0;
-const ORBIT_AMPLITUDE = 0.32; // radians (~18°) each way — enough parallax, no background streak
+// Interactive default: a gentle ±18° swing. Showcase mode (below) drives a
+// wider, richer "look-around" path per animal.
+let orbitYawAmp = 0.32; // radians each way
+let orbitPitchAmp = 0.0;
 const ORBIT_PERIOD = 7; // seconds per full left-right-left cycle
 // Set per-cloud so the whole subject stays framed as the camera swings.
 let subjectCenter = new THREE.Vector3(0, 0, -DEPTH_ANCHOR);
@@ -96,26 +105,31 @@ window.addEventListener('resize', resize);
 resize();
 
 let lastFrame = performance.now();
-renderer.setAnimationLoop(() => {
+function animate() {
   const now = performance.now();
   const dt = Math.min((now - lastFrame) / 1000, 0.05);
   lastFrame = now;
   if (autoOrbit && cloud) {
     orbitClock += dt;
-    const angle = ORBIT_AMPLITUDE * Math.sin((orbitClock / ORBIT_PERIOD) * Math.PI * 2);
+    const t = (orbitClock / ORBIT_PERIOD) * Math.PI * 2;
+    const yaw = orbitYawAmp * Math.sin(t);
+    const pitch = orbitPitchAmp * Math.sin(t * 2); // figure-8 look-around
     // Orbit around the subject's own centroid at the framing distance, so the
-    // whole subject stays centered and in-frame as it swings.
+    // whole subject stays centered and in-frame while the view moves.
+    const horiz = Math.cos(pitch) * viewDistance;
     camera.position.set(
-      subjectCenter.x + Math.sin(angle) * viewDistance,
-      subjectCenter.y,
-      subjectCenter.z + Math.cos(angle) * viewDistance,
+      subjectCenter.x + Math.sin(yaw) * horiz,
+      subjectCenter.y + Math.sin(pitch) * viewDistance,
+      subjectCenter.z + Math.cos(yaw) * horiz,
     );
     camera.lookAt(subjectCenter);
   } else {
     controls.update();
   }
   renderer.render(scene, camera);
-});
+  if (recordTrack) recordTrack.requestFrame();
+}
+renderer.setAnimationLoop(animate);
 
 // --- model loading --------------------------------------------------------
 
@@ -176,15 +190,162 @@ async function boot() {
     model = await loadAndCompile(bytes, { accelerator });
     status('Ready — choose a photo, use the camera, or drop an image.');
 
-    const testUrl = new URLSearchParams(location.search).get('img');
+    const params = new URLSearchParams(location.search);
+    const testUrl = params.get('img');
     if (testUrl) {
       const blob = await (await fetch(testUrl)).blob();
       await runOnImage(await createImageBitmap(blob));
+    }
+    if (params.get('frames') === '1') {
+      await renderFramesShowcase();
+    } else if (params.get('show') === '1') {
+      await runShowcase(params.get('record') === '1');
     }
   } catch (err) {
     status(`Failed to start: ${err instanceof Error ? err.message : err}`);
     throw err;
   }
+}
+
+// --- showcase: several exotic animals in sequence, wider look-around orbit --
+// Sources are Wikimedia Commons; licenses noted in SHOWCASE_CREDITS.md. Final
+// image sourcing/attribution for any public post is the owner's to confirm.
+const SHOWCASE = [
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Thornydevil.jpg/1280px-Thornydevil.jpg', label: 'Thorny devil' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg/1280px-Panther_chameleon_%28Furcifer_pardalis%29_male_Nosy_Be.jpg', label: 'Panther chameleon' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Endangered_species_Iguana_Iguana_from_Margarita_Island.jpg/1280px-Endangered_species_Iguana_Iguana_from_Margarita_Island.jpg', label: 'Green iguana' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Chlamydosaurus_kingii_01.jpg/1280px-Chlamydosaurus_kingii_01.jpg', label: 'Frilled lizard' },
+  { url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/European_praying_mantis_%28Mantis_religiosa%29_green_female_Dobruja.jpg/1280px-European_praying_mantis_%28Mantis_religiosa%29_green_female_Dobruja.jpg', label: 'Praying mantis' },
+];
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Place the camera for a scripted look-around at normalized time u∈[0,1):
+ * hold at the capture axis briefly, then a wide yaw sweep + gentle pitch. */
+function poseCamera(u) {
+  const hold = 0.12;
+  const p = u < hold ? 0 : (u - hold) / (1 - hold);
+  const yaw = 0.55 * Math.sin(p * Math.PI * 2);
+  const pitch = 0.16 * Math.sin(p * Math.PI * 4);
+  const horiz = Math.cos(pitch) * viewDistance;
+  camera.position.set(
+    subjectCenter.x + Math.sin(yaw) * horiz,
+    subjectCenter.y + Math.sin(pitch) * viewDistance,
+    subjectCenter.z + Math.cos(yaw) * horiz,
+  );
+  camera.lookAt(subjectCenter);
+}
+
+/** Deterministic frame dump → server → ffmpeg (reliable where canvas
+ * captureStream yields nothing). Renders each animal for FRAMES_PER frames
+ * at a fixed 16:9 size, posts each as a JPEG the dev server writes to disk. */
+async function renderFramesShowcase() {
+  const W = 1280;
+  const H = 720;
+  const FPS = 30;
+  const SECONDS_PER = 3.5;
+  const FRAMES_PER = Math.round(FPS * SECONDS_PER);
+  document.querySelector('.panel').style.display = 'none';
+  autoOrbit = false;
+  renderer.setAnimationLoop(null); // we render each frame by hand
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H);
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+
+  const capture = document.createElement('canvas');
+  capture.width = W;
+  capture.height = H;
+  const cctx = capture.getContext('2d');
+
+  let frameIndex = 0;
+  for (const item of SHOWCASE) {
+    try {
+      const blob = await (await fetch(item.url)).blob();
+      await runOnImage(await createImageBitmap(blob));
+      autoOrbit = false; // we drive the camera per frame
+    } catch {
+      continue;
+    }
+    for (let f = 0; f < FRAMES_PER; f++) {
+      poseCamera(f / FRAMES_PER);
+      renderer.render(scene, camera);
+      cctx.drawImage(renderer.domElement, 0, 0, W, H);
+      const jpeg = await new Promise((r) => capture.toBlob(r, 'image/jpeg', 0.92));
+      const name = `frames/f_${String(frameIndex).padStart(4, '0')}.jpg`;
+      await fetch(`/__save?name=${name}`, { method: 'POST', body: jpeg });
+      frameIndex += 1;
+    }
+    status(`captured ${item.label}`);
+  }
+  await fetch('/__save?name=frames/DONE', { method: 'POST', body: String(frameIndex) });
+  document.querySelector('.panel').style.display = '';
+  status(`Frame dump complete (${frameIndex} frames).`);
+  // Restore interactive rendering.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  resize();
+  renderer.setAnimationLoop(animate);
+}
+
+async function runShowcase(record) {
+  document.querySelector('.panel').style.display = 'none';
+  let recorder = null;
+  let chunks = [];
+  if (record && renderer.domElement.captureStream) {
+    // captureStream(0): frames are pushed manually via track.requestFrame()
+    // from the render loop — exact, and reliable on a WebGL canvas.
+    const stream = renderer.domElement.captureStream(0);
+    recordTrack = stream.getVideoTracks()[0];
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : 'video/webm';
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 16_000_000 });
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.start(200);
+  }
+
+  for (const item of SHOWCASE) {
+    try {
+      const blob = await (await fetch(item.url)).blob();
+      const bitmap = await createImageBitmap(blob);
+      await runOnImage(bitmap);
+      // Wider, richer look-around for the showcase; reset the clock so each
+      // animal starts at the capture view (opens as the photo) then explores.
+      orbitYawAmp = 0.55;
+      orbitPitchAmp = 0.18;
+      orbitClock = 0;
+      await delay(4200); // ~2/3 of one look-around cycle, ending near center
+    } catch {
+      // Skip an image that fails to load; keep the reel going.
+    }
+  }
+  // Restore interactive defaults.
+  orbitYawAmp = 0.32;
+  orbitPitchAmp = 0.0;
+
+  if (recorder) {
+    await delay(400);
+    recorder.stop();
+    await new Promise((resolve) => {
+      recorder.onstop = resolve;
+    });
+    recordTrack = null;
+    const out = new Blob(chunks, { type: 'video/webm' });
+    // Save via the dev-server endpoint (programmatic downloads are blocked
+    // without a user gesture); fall back to a download link if it fails.
+    try {
+      await fetch('/__save?name=moge-showcase.webm', { method: 'POST', body: out });
+      status(`Showcase saved (${(out.size / 1048576).toFixed(1)} MB).`);
+    } catch {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(out);
+      a.download = 'moge-showcase.webm';
+      a.click();
+    }
+  }
+  document.querySelector('.panel').style.display = '';
 }
 
 // --- inference ------------------------------------------------------------
