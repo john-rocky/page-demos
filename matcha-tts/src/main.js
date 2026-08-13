@@ -213,8 +213,17 @@ async function boot() {
     speakBtn.disabled = false;
     status('Ready — type something and press Speak.');
 
-    if (params.get('text')) {
-      textEl.value = params.get('text');
+    if (params.get('text')) textEl.value = params.get('text');
+    if (params.get('frames') === '1') {
+      // dev-only frames-dump showcase → frames/ via the /__save endpoint
+      const { runFramesShowcase } = await import('./showcase.js');
+      status('Rendering showcase frames…');
+      const n = await runFramesShowcase({ synth, g2p, symToId, cfg }, textEl.value, {
+        seed: Number(params.get('seed') ?? 0),
+        steps: Number(params.get('steps') ?? DEFAULT_STEPS),
+      });
+      status(`Showcase frame dump complete (${n} frames).`);
+    } else if (params.get('text')) {
       await speak();
     }
   } catch (err) {
