@@ -177,9 +177,9 @@ async function boot() {
   try {
     status('Loading runtime…');
     try {
-      await loadLiteRt('/litert-wasm/', { jspi: true });
+      await loadLiteRt('litert-wasm/', { jspi: true });
     } catch {
-      await loadLiteRt('/litert-wasm/', { jspi: false });
+      await loadLiteRt('litert-wasm/', { jspi: false });
     }
     accelerator = isWebGPUSupported() ? 'webgpu' : 'wasm';
     backendEl.textContent =
