@@ -22,6 +22,23 @@ npm run dev        # http://localhost:5173
 
 Inputs: photo file / drag & drop / paste / webcam. Debug: `?img=<url>`.
 
+### Text → speech
+Type a sentence and a voice speaks it — no cloud TTS API, nothing leaves the
+page. [Matcha-TTS](https://huggingface.co/litert-community/Matcha-TTS)
+(flow-matching acoustic model + HiFi-GAN vocoder, MIT, ~90 MB fp16) with G2P
+from a 275k-word espeak-IPA dictionary plus a DeepPhonemizer fallback. Text
+encoder and vocoder run on WebGPU, the CFM decoder on WASM/XNNPACK (the GPU
+delegate mis-fuses that graph — see the model card). ~1.5 s to first audio on
+an M4 Max at the default 4 ODE steps, RTF ≈ 0.5.
+
+```sh
+cd matcha-tts
+npm install
+npm run dev        # http://localhost:5173
+```
+
+Debug: `?text=…&steps=…&seed=…&voc=wasm` (see `matcha-tts/src/main.js`).
+
 ## How it works
 1. Center/contain-fit the image → 448×448 NCHW float32 in [0,1].
 2. `@litertjs/core` `loadAndCompile(bytes, { accelerator: 'webgpu' })`, one

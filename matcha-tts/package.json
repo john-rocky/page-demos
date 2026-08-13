@@ -1,0 +1,17 @@
+{
+  "name": "matcha-tts-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "postinstall": "mkdir -p public/litert-wasm && cp node_modules/@litertjs/core/wasm/* public/litert-wasm/",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@litertjs/core": "^2.5.3"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
