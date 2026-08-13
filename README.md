@@ -39,6 +39,11 @@ npm run dev        # http://localhost:5173
 
 Debug: `?text=…&steps=…&seed=…&voc=wasm` (see `matcha-tts/src/main.js`).
 
+> **Grown into a Chrome extension →
+> [Page Voice](https://github.com/john-rocky/page-voice)**: the same local
+> TTS pipeline as a right-click "Read aloud" on any page, plus auto-reading
+> of streaming ChatGPT/Claude/Gemini replies.
+
 ## How it works
 1. Center/contain-fit the image → 448×448 NCHW float32 in [0,1].
 2. `@litertjs/core` `loadAndCompile(bytes, { accelerator: 'webgpu' })`, one
