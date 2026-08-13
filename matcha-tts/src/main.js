@@ -223,7 +223,8 @@ async function boot() {
         steps: Number(params.get('steps') ?? DEFAULT_STEPS),
       });
       status(`Showcase frame dump complete (${n} frames).`);
-    } else if (params.get('text')) {
+    } else if (params.get('text') || params.get('demo') === '1') {
+      // ?demo=1: auto-speak the default text (clean URL for recordings)
       await speak();
     }
   } catch (err) {
