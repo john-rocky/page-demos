@@ -7,11 +7,13 @@ import { defineConfig } from 'vite';
 // non-gesture downloads). POST /__save?name=foo.wav with the blob body.
 // COOP/COEP make the page cross-origin isolated so LiteRT can use the
 // threaded+SIMD WASM build (SharedArrayBuffer); without them the decoder
-// falls back to a single-thread build and is ~50x slower. 'credentialless'
-// keeps the CORS model-fetches from Hugging Face working.
+// falls back to a single-thread build and is ~50x slower. 'require-corp'
+// matches what coi-serviceworker injects on the deployed page (and, unlike
+// 'credentialless', isolates Safari too); the HF model fetches are CORS-mode
+// against ACAO:*, which require-corp accepts.
 const coi = {
   'Cross-Origin-Opener-Policy': 'same-origin',
-  'Cross-Origin-Embedder-Policy': 'credentialless',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
 export default defineConfig({

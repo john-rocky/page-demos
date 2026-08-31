@@ -21,6 +21,10 @@ import { Synthesizer, encodeWav } from './synth.js';
 import { Viz } from './viz.js';
 
 const HF = 'https://huggingface.co/litert-community/Matcha-TTS/resolve/main/';
+// Resolve the wasm dir against this module's own URL, which works in dev
+// (/src/main.js) and in the build (/assets/*.js) alike — a page-relative dir
+// breaks as soon as the page URL shape changes.
+const WASM_DIR = new URL('../litert-wasm/', import.meta.url).href;
 // 4 Euler steps: ear-approved quality at ~1/3 the latency of the full 10
 // (decoder is 341 ms/call on WASM — see the model card). Override: ?steps=
 const DEFAULT_STEPS = 4;
@@ -51,6 +55,7 @@ let viz = null;
 let symToId = null;
 let cfg = null;
 let backends = null;
+let wasmOpts = null; // which loadLiteRt rung succeeded (threads or plain)
 let audioCtx = null;
 let liveSources = [];
 let lastWav = null;
@@ -130,29 +135,24 @@ function parseDict(bytes) {
 async function boot() {
   try {
     status('Loading runtime…');
-    // The threaded Wasm build (needs cross-origin isolation) is what makes the
-    // CPU decoder usable; single-thread is ~5-50x slower. ?threads=0 / ?jspi=0
-    // force the fallbacks for comparison.
+    // `threads` and `jspi` are mutually exclusive in LiteRT.js, and threads
+    // only work on a cross-origin-isolated page — ask for what can succeed,
+    // then fall back to plain. The threaded build is what makes the CPU
+    // decoder usable; single-thread is ~5-50x slower. ?threads=0 forces the
+    // single-thread build for comparison.
     const wantThreads = params.get('threads') !== '0' && window.crossOriginIsolated;
-    const wantJspi = params.get('jspi') !== '0';
-    const attempts = [
-      { threads: wantThreads, jspi: wantJspi },
-      { threads: wantThreads, jspi: false },
-      { threads: false, jspi: wantJspi },
-      { threads: false, jspi: false },
-    ];
-    let loaded = false;
-    let lastErr = null;
-    for (const opts of attempts) {
+    const rungs = wantThreads
+      ? [{ threads: true }, { threads: false }]
+      : [{ threads: false }];
+    for (const [index, opts] of rungs.entries()) {
       try {
-        await loadLiteRt('litert-wasm/', opts);
-        loaded = true;
+        await loadLiteRt(WASM_DIR, opts);
+        wasmOpts = opts;
         break;
       } catch (err) {
-        lastErr = err;
+        if (index === rungs.length - 1) throw err;
       }
     }
-    if (!loaded) throw lastErr;
     const gpu = isWebGPUSupported() ? 'webgpu' : 'wasm';
     backends = {
       g2p: 'wasm',
@@ -189,12 +189,26 @@ async function boot() {
 
     status(`Compiling (${backends.textenc}/${backends.vocoder})…`);
     const numThreads = Math.min(8, navigator.hardwareConcurrency || 4);
+    const wasmCompile = { accelerator: 'wasm', cpuOptions: { numThreads } };
     const models = {};
     for (const [key, bytes] of [['textenc', teB], ['decoder', deB], ['vocoder', voB], ['g2p', g2pB]]) {
-      const opts = backends[key] === 'wasm'
-        ? { accelerator: 'wasm', cpuOptions: { numThreads } }
-        : { accelerator: backends[key] };
-      models[key] = await loadAndCompile(bytes, opts);
+      if (backends[key] === 'wasm') {
+        models[key] = await loadAndCompile(bytes, wasmCompile);
+        continue;
+      }
+      try {
+        models[key] = await loadAndCompile(bytes, { accelerator: backends[key] });
+      } catch {
+        // WebGPU exists on paper in more browsers than it works in (mobile
+        // WebKit in particular) — fall back to WASM instead of dying. Only
+        // models not compiled yet are moved; an already-compiled one keeps
+        // its backend (and its label stays truthful).
+        for (const k of Object.keys(backends)) {
+          if (backends[k] === 'webgpu' && !models[k]) backends[k] = 'wasm';
+        }
+        status(`WebGPU failed — compiling on WASM…`);
+        models[key] = await loadAndCompile(bytes, wasmCompile);
+      }
     }
 
     if (params.get('ab') === '1') vocoderBytes = voB;
@@ -245,7 +259,10 @@ function stopPlayback() {
 function fmtLatency(t, audioSeconds, chunkCount, steps) {
   const total = t.g2p + t.textenc + t.decoder + t.vocoder;
   const rtf = total / 1000 / audioSeconds;
-  const env = (b) => `<span class="env">(${b})</span>`;
+  // Show which wasm actually loaded — a page that silently lost threads
+  // (and with them the advertised RTF) must be visible at a glance.
+  const wasmLabel = wasmOpts?.threads ? 'wasm' : 'wasm·1-thread';
+  const env = (b) => `<span class="env">(${b === 'wasm' ? wasmLabel : b})</span>`;
   return (
     `g2p <b>${t.g2p.toFixed(0)} ms</b> ${env(backends.g2p)} · ` +
     `textenc <b>${t.textenc.toFixed(0)} ms</b> ${env(backends.textenc)} · ` +
@@ -339,6 +356,7 @@ async function speak() {
     const stats = {
       text,
       backends,
+      wasmThreads: !!wasmOpts?.threads,
       seed,
       steps,
       chunks: chunks.map((c, i) => ({ ipa: c.ipa, pids: c.ids.length, ylen: results[i].ylen })),

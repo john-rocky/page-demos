@@ -122,6 +122,13 @@
     <span>Model: <a href="https://huggingface.co/litert-community/Matcha-TTS" target="_blank" rel="noopener">Matcha-TTS</a> (MIT) · Runtime: <a href="https://www.npmjs.com/package/@litertjs/core" target="_blank" rel="noopener">LiteRT.js</a> · <a href="https://github.com/john-rocky/page-demos" target="_blank" rel="noopener">Source</a></span>
   </footer>
 
+  <!-- GitHub Pages cannot send COOP/COEP, so this service worker injects them
+       (one reload on first visit) — without cross-origin isolation the decoder
+       loses threaded WASM and is ~5-50x slower. require-corp (not
+       credentialless) so Safari isolates too; the HF model fetches are
+       CORS-mode against ACAO:*, which require-corp accepts. -->
+  <script>window.coi = { coepCredentialless: () => false };</script>
+  <script src="./coi-serviceworker.min.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

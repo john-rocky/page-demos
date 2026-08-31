@@ -1,4 +1,5 @@
 node_modules/
 dist/
 public/litert-wasm/
+public/coi-serviceworker.min.js
 out/

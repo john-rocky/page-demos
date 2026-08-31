@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "mkdir -p public/litert-wasm && cp node_modules/@litertjs/core/wasm/* public/litert-wasm/",
+    "postinstall": "mkdir -p public/litert-wasm && cp node_modules/@litertjs/core/wasm/litert_wasm_internal.* node_modules/@litertjs/core/wasm/litert_wasm_threaded_internal.* node_modules/@litertjs/core/wasm/litert_wasm_compat_internal.* public/litert-wasm/ && cp node_modules/coi-serviceworker/coi-serviceworker.min.js public/",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
@@ -12,6 +12,7 @@
     "@litertjs/core": "^2.5.3"
   },
   "devDependencies": {
+    "coi-serviceworker": "^0.1.7",
     "vite": "^6.0.0"
   }
 }
