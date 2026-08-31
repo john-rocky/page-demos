@@ -6,6 +6,11 @@ no upload — the input never leaves the page.
 
 > An independent demo project built with LiteRT.js. Not an official Google project.
 
+The root page (`index.html`) lists the demos; each model has its own page
+with a WebGPU ↔ WASM switch, a one-shot warm-up run (discarded, so the
+displayed latency is real), and an env label (`webgpu` / `wasm` /
+`wasm·1-thread`).
+
 ## Demos
 
 ### Photo → 3D
@@ -17,10 +22,11 @@ WebGPU); falls back to WASM when WebGPU is unavailable.
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # http://localhost:5173/moge/
 ```
 
-Inputs: photo file / drag & drop / paste / webcam. Debug: `?img=<url>`.
+Inputs: photo file / drag & drop / paste / webcam.
+Debug: `?img=<url>&backend=wasm`.
 
 ### Text → speech
 Type a sentence and a voice speaks it — no cloud TTS API, nothing leaves the
@@ -50,6 +56,13 @@ Debug: `?text=…&steps=…&seed=…&voc=wasm` (see `matcha-tts/src/main.js`).
    `model.run()` per photo.
 3. Outputs (order-ambiguous in the .tflite) resolved by shape/range; masked
    points drawn as a colored cloud.
+
+## Deploy
+
+`npm run deploy` builds the landing page and both demos into one `dist/` and
+pushes it to the `gh-pages` branch. (`npm run build` alone rebuilds only the
+root project and empties `dist/` — use `build:all` when the TTS demo must be
+included.)
 
 ## Credits
 Showcase animal photos: [Pexels](https://www.pexels.com) (Pexels License, no

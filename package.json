@@ -3,10 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "mkdir -p public/litert-wasm && cp node_modules/@litertjs/core/wasm/* public/litert-wasm/",
+    "postinstall": "node -e \"const f=require('fs');f.mkdirSync('public/litert-wasm',{recursive:true});for(const v of['litert_wasm_internal','litert_wasm_threaded_internal','litert_wasm_compat_internal'])for(const e of['js','wasm'])f.copyFileSync('node_modules/@litertjs/core/wasm/'+v+'.'+e,'public/litert-wasm/'+v+'.'+e)\"",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:all": "vite build && npm --prefix matcha-tts run build && node -e \"require('fs').cpSync('matcha-tts/dist','dist/matcha-tts',{recursive:true})\"",
+    "preview": "vite preview",
+    "deploy": "npm run build:all && gh-pages -d dist"
   },
   "dependencies": {
     "@litertjs/core": "^2.5.3",

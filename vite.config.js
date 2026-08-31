@@ -7,6 +7,14 @@ import { defineConfig } from 'vite';
 // non-gesture downloads). POST /__save?name=foo.webm with the blob body.
 export default defineConfig({
   base: './',
+  build: {
+    rollupOptions: {
+      input: {
+        index: 'index.html',
+        moge: 'moge/index.html',
+      },
+    },
+  },
   plugins: [
     {
       name: 'save-recording',

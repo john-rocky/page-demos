@@ -5,7 +5,7 @@
  * (LiteRT.js, WebGPU with WASM fallback) → per-pixel affine point map +
  * confidence mask → three.js point cloud colored from the photo.
  *
- * Model I/O (from the conversion script, LiteRT-Models/moge):
+ * Model I/O (see the conversion notes on the model card):
  *   input : [1, 3, 448, 448] float32, range [0, 1] (no ImageNet norm)
  *   outputs (order not guaranteed in the .tflite — resolved by shape/range):
  *     points [1,448,448,3] · normal [1,448,448,3] · mask(sigmoid) [1,448,448,1]
@@ -22,6 +22,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const MODEL_URL =
   'https://huggingface.co/litert-community/MoGe-2-LiteRT/resolve/main/moge.tflite';
+const MODEL_NAME = 'MoGe-2';
+// The wasm runtime lives at the site root (public/litert-wasm). The page sits
+// in /moge/, so resolve against this module's own URL, which works in dev
+// (/src/main.js) and in the build (/assets/*.js) alike.
+const WASM_DIR = new URL('../litert-wasm/', import.meta.url).href;
 const SIZE = 448;
 const MASK_THRESHOLD = 0.5;
 // World-space depth (in units) the photo's median depth is mapped to.
@@ -31,6 +36,8 @@ const statusEl = document.getElementById('status');
 const latencyEl = document.getElementById('latency');
 const latencyValueEl = latencyEl.querySelector('b');
 const backendEl = document.getElementById('backend');
+const envEl = document.getElementById('env');
+const backendButtons = [...document.querySelectorAll('#backend-switch button')];
 const hintEl = document.getElementById('hint');
 const fileEl = document.getElementById('file');
 const camBtn = document.getElementById('cam');
@@ -40,8 +47,10 @@ const dropOverlay = document.getElementById('drop-overlay');
 
 let model = null;
 let accelerator = 'wasm';
+let wasmOpts = null; // which loadLiteRt attempt succeeded
+let modelBytes = null;
+let lastSource = null; // last inferred bitmap, re-run on backend switch
 let cloud = null;
-let runCount = 0;
 
 function status(text, pct = null) {
   statusEl.textContent = text;
@@ -173,24 +182,67 @@ async function fetchModelBytes() {
   return bytes;
 }
 
+/** wasm / wasm·1-thread / webgpu — mirrors what actually loaded, so a page
+ * that silently lost threads (or WebGPU) is visible at a glance. */
+function envLabel() {
+  if (accelerator === 'webgpu') return 'webgpu';
+  return wasmOpts?.threads ? 'wasm' : 'wasm·1-thread';
+}
+
+/** Compile for `acc`, then burn one throwaway inference: the first run after
+ * compile carries shader/kernel warm-up (~5 s on WebGPU) and must never land
+ * on a user photo or in the latency display. */
+async function compileAndWarm(acc) {
+  accelerator = acc;
+  for (const b of backendButtons) b.classList.toggle('active', b.dataset.backend === acc);
+  status(`Compiling for ${acc === 'webgpu' ? 'WebGPU' : 'WASM'}…`);
+  model = await loadAndCompile(modelBytes, { accelerator: acc });
+  status('Warming up (one throwaway run)…');
+  const gray = new Float32Array(3 * SIZE * SIZE).fill(0.5);
+  const start = performance.now();
+  await infer(gray);
+  const warmSeconds = (performance.now() - start) / 1000;
+  envEl.textContent = `${MODEL_NAME} · ${envLabel()} · warm-up ${warmSeconds.toFixed(1)} s`;
+  envEl.style.display = 'block';
+  backendEl.textContent = `${envLabel()} · your device`;
+}
+
 async function boot() {
   try {
     status('Loading runtime…');
-    try {
-      await loadLiteRt('litert-wasm/', { jspi: true });
-    } catch {
-      await loadLiteRt('litert-wasm/', { jspi: false });
+    // `threads` and `jspi` are mutually exclusive in LiteRT.js, and threads
+    // only work on a cross-origin-isolated page — ask for what can succeed,
+    // then fall back to plain.
+    const rungs = window.crossOriginIsolated
+      ? [{ threads: true }, { threads: false }]
+      : [{ threads: false }];
+    for (const [index, opts] of rungs.entries()) {
+      try {
+        await loadLiteRt(WASM_DIR, opts);
+        wasmOpts = opts;
+        break;
+      } catch (err) {
+        if (index === rungs.length - 1) throw err;
+      }
     }
-    accelerator = isWebGPUSupported() ? 'webgpu' : 'wasm';
-    backendEl.textContent =
-      accelerator === 'webgpu' ? 'WebGPU · your device' : 'WASM (no WebGPU) · your device';
-
-    const bytes = await fetchModelBytes();
-    status('Compiling for ' + (accelerator === 'webgpu' ? 'WebGPU' : 'WASM') + '…');
-    model = await loadAndCompile(bytes, { accelerator });
-    status('Ready — choose a photo, use the camera, or drop an image.');
 
     const params = new URLSearchParams(location.search);
+    const requested = params.get('backend'); // ?backend=wasm|webgpu
+    let acc = isWebGPUSupported() ? 'webgpu' : 'wasm';
+    if (requested === 'wasm') acc = 'wasm';
+    if (!isWebGPUSupported()) {
+      for (const b of backendButtons) {
+        if (b.dataset.backend === 'webgpu') {
+          b.disabled = true;
+          b.title = 'WebGPU is not available in this browser';
+        }
+      }
+    }
+
+    modelBytes = await fetchModelBytes();
+    await compileAndWarm(acc);
+    status('Ready — choose a photo, use the camera, or drop an image.');
+
     const testUrl = params.get('img');
     if (testUrl) {
       const blob = await (await fetch(testUrl)).blob();
@@ -208,8 +260,6 @@ async function boot() {
 }
 
 // --- showcase: several exotic animals in sequence, wider look-around orbit --
-// Sources are Wikimedia Commons; licenses noted in SHOWCASE_CREDITS.md. Final
-// image sourcing/attribution for any public post is the owner's to confirm.
 // Attribution-free (Pexels License: no credit required). Each hand-picked in
 // the demo for a dense point cloud + readable subject. See SHOWCASE_CREDITS.md.
 const PEX = (id) =>
@@ -555,6 +605,7 @@ function buildCloud(points, mask, rgba, valid) {
 
 async function runOnImage(source) {
   if (!model) return;
+  lastSource = source;
   const width = source.videoWidth ?? source.width;
   const height = source.videoHeight ?? source.height;
   status('Running…');
@@ -580,13 +631,10 @@ async function runOnImage(source) {
     camera.lookAt(subjectCenter);
     controls.target.copy(subjectCenter);
 
-    runCount += 1;
     latencyValueEl.textContent = `${elapsed.toFixed(0)} ms`;
     latencyEl.style.display = 'block';
     hintEl.style.display = 'block';
-    status(runCount === 1 && accelerator === 'webgpu'
-      ? 'Done (first run includes GPU warm-up — try another photo).'
-      : 'Done.');
+    status('Done.');
   } catch (err) {
     status(`Failed: ${err instanceof Error ? err.message : err}`);
   }
@@ -654,9 +702,37 @@ function stopCamera() {
 
 shutterBtn.addEventListener('click', async () => {
   if (videoEl.videoWidth) {
-    await runOnImage(videoEl);
+    // Snapshot to a bitmap so the frame survives stopCamera() and backend
+    // switches can re-run it.
+    const frame = await createImageBitmap(videoEl);
     stopCamera();
+    await runOnImage(frame);
   }
 });
+
+// --- backend switch (webgpu / wasm) ---------------------------------------
+
+for (const button of backendButtons) {
+  button.addEventListener('click', async () => {
+    const acc = button.dataset.backend;
+    if (acc === accelerator || !modelBytes || button.disabled) return;
+    const webgpuMissing = !isWebGPUSupported();
+    for (const b of backendButtons) b.disabled = true;
+    try {
+      await compileAndWarm(acc);
+      if (lastSource) {
+        await runOnImage(lastSource);
+      } else {
+        status('Ready — choose a photo, use the camera, or drop an image.');
+      }
+    } catch (err) {
+      status(`Backend switch failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      for (const b of backendButtons) {
+        b.disabled = webgpuMissing && b.dataset.backend === 'webgpu';
+      }
+    }
+  });
+}
 
 boot();
