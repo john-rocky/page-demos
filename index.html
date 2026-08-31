@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google" content="notranslate">
-<title>Photo → 3D — in your browser</title>
+<title>ML demos — in your browser</title>
 <style>
   :root {
     --bg: #0b0d10;
@@ -15,114 +15,64 @@
     --border: rgba(255, 255, 255, 0.09);
   }
   * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; }
   body {
     background: var(--bg);
     color: var(--text);
     font: 15px/1.5 -apple-system, "SF Pro Text", "Segoe UI", Roboto, "Hiragino Sans", sans-serif;
-    overflow: hidden;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
   }
-  #stage { position: fixed; inset: 0; }
-  #stage canvas { display: block; }
+  main { width: min(560px, 100%); }
+  h1 { font-size: 26px; font-weight: 650; letter-spacing: 0.1px; }
+  .sub { color: var(--muted); margin-top: 8px; font-size: 14px; }
+  a { color: var(--accent); }
 
-  .panel {
-    position: fixed;
-    left: 16px;
-    top: 16px;
-    width: min(340px, calc(100vw - 32px));
+  .card {
+    display: block;
+    margin-top: 20px;
+    padding: 18px 20px;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 16px 16px 14px;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  h1 { font-size: 17px; font-weight: 650; letter-spacing: 0.1px; }
-  .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-
-  .buttons { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-  button, .filebtn {
-    appearance: none;
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.06);
     color: var(--text);
-    border-radius: 9px;
-    padding: 8px 13px;
-    font: inherit;
-    font-size: 13.5px;
-    cursor: pointer;
+    text-decoration: none;
   }
-  button:hover, .filebtn:hover { background: rgba(255, 255, 255, 0.12); }
-  button:disabled { opacity: 0.4; cursor: default; }
-  button.primary, .filebtn.primary { background: var(--accent); border-color: transparent; color: #06263f; font-weight: 600; }
-  button.primary:hover, .filebtn.primary:hover { filter: brightness(1.06); }
-  .filebtn input { display: none; }
+  .card:hover { border-color: var(--accent); }
+  .card h2 { font-size: 17px; font-weight: 650; }
+  .card p { color: var(--muted); font-size: 13.5px; margin-top: 5px; }
+  .card .go { display: inline-block; margin-top: 9px; color: var(--accent); font-size: 13.5px; }
 
-  #status { margin-top: 11px; font-size: 12.5px; color: var(--muted); min-height: 18px; }
-  #status .bar {
-    display: inline-block; vertical-align: middle;
-    width: 120px; height: 4px; margin-left: 8px;
-    background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden;
-  }
-  #status .bar i { display: block; height: 100%; background: var(--accent); width: 0%; }
-
-  #latency {
-    margin-top: 8px; font-size: 12.5px; color: var(--text);
-    display: none;
-  }
-  #latency b { color: var(--accent); font-variant-numeric: tabular-nums; }
-
-  #hint { margin-top: 8px; font-size: 12px; color: var(--muted); display: none; }
-
-  #video {
-    display: none;
-    position: fixed; right: 16px; top: 16px;
-    width: 240px; border-radius: 12px; border: 1px solid var(--border);
-    transform: scaleX(-1);
-  }
-
-  footer {
-    position: fixed; left: 16px; right: 16px; bottom: 12px;
-    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-    font-size: 12px; color: var(--muted);
-    pointer-events: none;
-  }
-  footer span { background: rgba(11, 13, 16, 0.7); padding: 3px 8px; border-radius: 7px; }
-
-  #drop-overlay {
-    position: fixed; inset: 0; display: none;
-    align-items: center; justify-content: center;
-    background: rgba(11, 13, 16, 0.75);
-    border: 2px dashed var(--accent);
-    font-size: 20px; color: var(--accent);
-    z-index: 10; pointer-events: none;
-  }
+  footer { margin-top: 36px; font-size: 12.5px; color: var(--muted); }
 </style>
-  <script type="module" crossorigin src="./assets/index-BLHx73cw.js"></script>
 </head>
 <body>
-  <div id="stage"></div>
+<main>
+  <h1>Real models, in this tab</h1>
+  <p class="sub">Each demo downloads an open model from Hugging Face and runs it
+  right here with <a href="https://www.npmjs.com/package/@litertjs/core" rel="noopener">LiteRT.js</a>
+  — WebGPU when available, WASM otherwise. Nothing you load is uploaded.</p>
 
-  <div class="panel">
-    <h1>Photo → 3D point cloud</h1>
-    <div class="sub">MoGe-2 monocular geometry, running entirely in your browser on LiteRT.js (WebGPU). Nothing is uploaded.</div>
-    <div class="buttons">
-      <label class="filebtn primary">Choose a photo<input id="file" type="file" accept="image/*"></label>
-      <button id="cam">Use camera</button>
-      <button id="shutter" style="display:none">Capture</button>
-    </div>
-    <div id="status">Loading runtime…</div>
-    <div id="latency">inference <b></b> · <span id="backend"></span></div>
-    <div id="hint">drag to orbit · scroll to zoom · drop or paste a new photo anytime</div>
-  </div>
+  <a class="card" href="moge/">
+    <h2>Photo → 3D</h2>
+    <p>One photo becomes an orbitable 3D point cloud. MoGe-2 monocular geometry,
+    ~80 ms per photo on an M4 Max (WebGPU).</p>
+    <span class="go">Open →</span>
+  </a>
 
-  <video id="video" autoplay playsinline muted></video>
-  <div id="drop-overlay">Drop the photo</div>
+  <a class="card" href="matcha-tts/">
+    <h2>Text → speech</h2>
+    <p>Type a sentence and a local voice speaks it. Matcha-TTS flow matching +
+    HiFi-GAN vocoder, 22 kHz.</p>
+    <span class="go">Open →</span>
+  </a>
 
   <footer>
-    <span>Your photo never leaves this page.</span>
-    <span>Model: <a href="https://huggingface.co/litert-community/MoGe-2-LiteRT" target="_blank" rel="noopener">MoGe-2</a> (MIT) · Runtime: <a href="https://www.npmjs.com/package/@litertjs/core" target="_blank" rel="noopener">LiteRT.js</a> · <a href="https://github.com/john-rocky/litertjs-demos" target="_blank" rel="noopener">Source</a></span>
+    Models: <a href="https://huggingface.co/litert-community" rel="noopener">litert-community</a>
+    · Source: <a href="https://github.com/john-rocky/page-demos" rel="noopener">GitHub</a>
+    · Not an official Google project.
   </footer>
-
+</main>
 </body>
 </html>
