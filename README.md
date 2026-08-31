@@ -1,4 +1,4 @@
-# litertjs-demos
+# page-demos
 
 Small browser demos that run real ML models **entirely in your browser** with
 [LiteRT.js](https://www.npmjs.com/package/@litertjs/core) (WebGPU). No server,
