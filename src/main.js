@@ -189,22 +189,49 @@ function envLabel() {
   return wasmOpts?.threads ? 'wasm' : 'wasm·1-thread';
 }
 
+/** Runtime failures are not always Error objects (a failed <script> load
+ * rejects with an Event; WebKit sometimes throws bare strings). */
+function errText(err) {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err && typeof err.type === 'string') return `${err.type} event`;
+  return String(err);
+}
+
+// Which boot stage is in flight, so a failure names the culprit
+// (runtime / download / compile webgpu / warm-up wasm / …).
+let bootStage = 'runtime';
+
 /** Compile for `acc`, then burn one throwaway inference: the first run after
  * compile carries shader/kernel warm-up (~5 s on WebGPU) and must never land
- * on a user photo or in the latency display. */
+ * on a user photo or in the latency display. On failure the previous
+ * model/backend stay in place. */
 async function compileAndWarm(acc) {
+  const prevAccelerator = accelerator;
+  const prevModel = model;
   accelerator = acc;
   for (const b of backendButtons) b.classList.toggle('active', b.dataset.backend === acc);
-  status(`Compiling for ${acc === 'webgpu' ? 'WebGPU' : 'WASM'}…`);
-  model = await loadAndCompile(modelBytes, { accelerator: acc });
-  status('Warming up (one throwaway run)…');
-  const gray = new Float32Array(3 * SIZE * SIZE).fill(0.5);
-  const start = performance.now();
-  await infer(gray);
-  const warmSeconds = (performance.now() - start) / 1000;
-  envEl.textContent = `${MODEL_NAME} · ${envLabel()} · warm-up ${warmSeconds.toFixed(1)} s`;
-  envEl.style.display = 'block';
-  backendEl.textContent = `${envLabel()} · your device`;
+  try {
+    bootStage = `compile ${acc}`;
+    status(`Compiling for ${acc === 'webgpu' ? 'WebGPU' : 'WASM'}…`);
+    model = await loadAndCompile(modelBytes, { accelerator: acc });
+    bootStage = `warm-up ${acc}`;
+    status('Warming up (one throwaway run)…');
+    const gray = new Float32Array(3 * SIZE * SIZE).fill(0.5);
+    const start = performance.now();
+    await infer(gray);
+    const warmSeconds = (performance.now() - start) / 1000;
+    envEl.textContent = `${MODEL_NAME} · ${envLabel()} · warm-up ${warmSeconds.toFixed(1)} s`;
+    envEl.style.display = 'block';
+    backendEl.textContent = `${envLabel()} · your device`;
+  } catch (err) {
+    accelerator = prevAccelerator;
+    model = prevModel;
+    for (const b of backendButtons) {
+      b.classList.toggle('active', b.dataset.backend === accelerator);
+    }
+    throw err;
+  }
 }
 
 async function boot() {
@@ -239,8 +266,23 @@ async function boot() {
       }
     }
 
+    bootStage = 'download';
     modelBytes = await fetchModelBytes();
-    await compileAndWarm(acc);
+    try {
+      await compileAndWarm(acc);
+    } catch (err) {
+      // WebGPU exists on paper in more browsers than it works in (mobile
+      // WebKit in particular) — fall back to WASM instead of dying.
+      if (acc !== 'webgpu') throw err;
+      status(`WebGPU failed (${errText(err)}) — retrying on WASM…`);
+      for (const b of backendButtons) {
+        if (b.dataset.backend === 'webgpu') {
+          b.disabled = true;
+          b.title = 'WebGPU failed on this device';
+        }
+      }
+      await compileAndWarm('wasm');
+    }
     status('Ready — choose a photo, use the camera, or drop an image.');
 
     const testUrl = params.get('img');
@@ -254,7 +296,7 @@ async function boot() {
       await runShowcase(params.get('record') === '1');
     }
   } catch (err) {
-    status(`Failed to start: ${err instanceof Error ? err.message : err}`);
+    status(`Failed to start (${bootStage}): ${errText(err)}`);
     throw err;
   }
 }
@@ -636,7 +678,7 @@ async function runOnImage(source) {
     hintEl.style.display = 'block';
     status('Done.');
   } catch (err) {
-    status(`Failed: ${err instanceof Error ? err.message : err}`);
+    status(`Failed: ${errText(err)}`);
   }
 }
 
@@ -687,7 +729,7 @@ camBtn.addEventListener('click', async () => {
     shutterBtn.style.display = 'inline-block';
     camBtn.textContent = 'Stop camera';
   } catch (err) {
-    status(`Camera: ${err instanceof Error ? err.message : err}`);
+    status(`Camera: ${errText(err)}`);
   }
 });
 
@@ -726,7 +768,7 @@ for (const button of backendButtons) {
         status('Ready — choose a photo, use the camera, or drop an image.');
       }
     } catch (err) {
-      status(`Backend switch failed: ${err instanceof Error ? err.message : err}`);
+      status(`Backend switch failed: ${errText(err)}`);
     } finally {
       for (const b of backendButtons) {
         b.disabled = webgpuMissing && b.dataset.backend === 'webgpu';
