@@ -10,6 +10,11 @@
 //                     the page runs on WASM (verified: full pass)
 //   --break-pipeline  detection passes, pipeline creation throws — NOTE: a sync
 //                     throw here wedges loadLiteRt (hangs, no rejection)
+//
+// For iOS-WebKit specifics, the iOS Simulator runs the real engine:
+//   xcrun simctl boot <udid> && xcrun simctl openurl booted "<url>"
+//   xcrun simctl io <udid> screenshot shot.png
+// (it does not model real-device memory ceilings or GPU limits).
 import { webkit } from 'playwright';
 
 const url = process.argv[2];
