@@ -20,8 +20,15 @@ import {
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const MODEL_URL =
-  'https://huggingface.co/litert-community/MoGe-2-LiteRT/resolve/main/moge.tflite';
+// fp16 weights halve the download and run slightly faster on WebGPU
+// (55.6 vs 58.5 ms here), with outputs equal to fp32 up to the weight cast
+// (max |Δ| 0.003). XNNPACK declines the fp16 graph on WASM (31x slower,
+// reference kernels), so the WASM path keeps fp32.
+const MODEL_URLS = {
+  webgpu:
+    'https://huggingface.co/litert-community/MoGe-2-LiteRT/resolve/main/moge_fp16.tflite',
+  wasm: 'https://huggingface.co/litert-community/MoGe-2-LiteRT/resolve/main/moge.tflite',
+};
 const MODEL_NAME = 'MoGe-2';
 // The wasm runtime lives at the site root (public/litert-wasm). The page sits
 // in /moge/, so resolve against this module's own URL, which works in dev
@@ -48,7 +55,7 @@ const dropOverlay = document.getElementById('drop-overlay');
 let model = null;
 let accelerator = 'wasm';
 let wasmOpts = null; // which loadLiteRt attempt succeeded
-let modelBytes = null;
+const modelBytesByAcc = {}; // webgpu -> fp16 bytes, wasm -> fp32 bytes
 let lastSource = null; // last inferred bitmap, re-run on backend switch
 let cloud = null;
 
@@ -142,16 +149,16 @@ renderer.setAnimationLoop(animate);
 
 // --- model loading --------------------------------------------------------
 
-async function fetchModelBytes() {
+async function fetchModelBytes(url) {
   const cache = 'caches' in window ? await caches.open('moge-demo-v1') : null;
   if (cache) {
-    const hit = await cache.match(MODEL_URL);
+    const hit = await cache.match(url);
     if (hit) {
       status('Loading model from cache…');
       return new Uint8Array(await hit.arrayBuffer());
     }
   }
-  const response = await fetch(MODEL_URL);
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`model download failed: HTTP ${response.status}`);
   const total = Number(response.headers.get('Content-Length')) || 0;
   const reader = response.body.getReader();
@@ -177,7 +184,7 @@ async function fetchModelBytes() {
     offset += chunk.length;
   }
   if (cache) {
-    await cache.put(MODEL_URL, new Response(bytes.slice().buffer));
+    await cache.put(url, new Response(bytes.slice().buffer));
   }
   return bytes;
 }
@@ -212,16 +219,18 @@ async function compileAndWarm(acc) {
   accelerator = acc;
   for (const b of backendButtons) b.classList.toggle('active', b.dataset.backend === acc);
   try {
+    bootStage = `download ${acc}`;
+    modelBytesByAcc[acc] ??= await fetchModelBytes(MODEL_URLS[acc]);
     bootStage = `compile ${acc}`;
     status(`Compiling for ${acc === 'webgpu' ? 'WebGPU' : 'WASM'}…`);
-    model = await loadAndCompile(modelBytes, { accelerator: acc });
+    model = await loadAndCompile(modelBytesByAcc[acc], { accelerator: acc });
     bootStage = `warm-up ${acc}`;
     status('Warming up (one throwaway run)…');
     const gray = new Float32Array(3 * SIZE * SIZE).fill(0.5);
     const start = performance.now();
     await infer(gray);
     const warmSeconds = (performance.now() - start) / 1000;
-    envEl.textContent = `${MODEL_NAME} · ${envLabel()} · warm-up ${warmSeconds.toFixed(1)} s`;
+    envEl.textContent = `${MODEL_NAME} ${acc === 'webgpu' ? 'fp16' : 'fp32'} · ${envLabel()} · warm-up ${warmSeconds.toFixed(1)} s`;
     envEl.style.display = 'block';
     backendEl.textContent = `${envLabel()} · your device`;
   } catch (err) {
@@ -266,8 +275,6 @@ async function boot() {
       }
     }
 
-    bootStage = 'download';
-    modelBytes = await fetchModelBytes();
     try {
       await compileAndWarm(acc);
     } catch (err) {
@@ -757,7 +764,7 @@ shutterBtn.addEventListener('click', async () => {
 for (const button of backendButtons) {
   button.addEventListener('click', async () => {
     const acc = button.dataset.backend;
-    if (acc === accelerator || !modelBytes || button.disabled) return;
+    if (acc === accelerator || !model || button.disabled) return;
     const webgpuMissing = !isWebGPUSupported();
     for (const b of backendButtons) b.disabled = true;
     try {
