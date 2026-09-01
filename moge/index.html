@@ -138,6 +138,10 @@
     <span>Model: <a href="https://huggingface.co/litert-community/MoGe-2-LiteRT" target="_blank" rel="noopener">MoGe-2</a> (MIT) · Runtime: <a href="https://www.npmjs.com/package/@litertjs/core" target="_blank" rel="noopener">LiteRT.js</a> · <a href="https://github.com/john-rocky/page-demos" target="_blank" rel="noopener">Source</a></span>
   </footer>
 
+  <!-- Cross-origin isolation via the site-root service worker (see the
+       comment in the root index.html) — the WASM fallback runs threaded. -->
+  <script>window.coi = { coepCredentialless: () => false };</script>
+  <script src="../coi-serviceworker.min.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

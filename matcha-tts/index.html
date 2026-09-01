@@ -126,9 +126,23 @@
        (one reload on first visit) — without cross-origin isolation the decoder
        loses threaded WASM and is ~5-50x slower. require-corp (not
        credentialless) so Safari isolates too; the HF model fetches are
-       CORS-mode against ACAO:*, which require-corp accepts. -->
-  <script>window.coi = { coepCredentialless: () => false };</script>
-  <script src="./coi-serviceworker.min.js"></script>
+       CORS-mode against ACAO:*, which require-corp accepts. Registered from
+       the site root (../) so its scope covers the shared litert-wasm/ dir:
+       thread workers are matched to a service worker by the worker script
+       URL, and outside the scope they boot without COEP and die. In
+       standalone dev the path clamps to this project's own public/ copy. -->
+  <script>
+    window.coi = {
+      coepCredentialless: () => false,
+      // Returning visitors carry the retired page-scoped registration, whose
+      // scope cannot cover the shared litert-wasm/ dir — under it the thread
+      // workers die. Deregister exactly that one (one extra reload); the
+      // root-scoped worker takes over.
+      shouldDeregister: () =>
+        !!navigator.serviceWorker?.controller?.scriptURL.endsWith('/matcha-tts/coi-serviceworker.min.js'),
+    };
+  </script>
+  <script src="../coi-serviceworker.min.js"></script>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

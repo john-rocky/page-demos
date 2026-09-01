@@ -23,8 +23,11 @@ import { Viz } from './viz.js';
 const HF = 'https://huggingface.co/litert-community/Matcha-TTS/resolve/main/';
 // Resolve the wasm dir against this module's own URL, which works in dev
 // (/src/main.js) and in the build (/assets/*.js) alike — a page-relative dir
-// breaks as soon as the page URL shape changes.
-const WASM_DIR = new URL('../litert-wasm/', import.meta.url).href;
+// breaks as soon as the page URL shape changes. Two levels up = the wasm copy
+// shared with the other demos at the site root (in dev the path clamps at the
+// server root, which is this project's own public/), so one ~27 MB runtime
+// serves every page instead of one per demo.
+const WASM_DIR = new URL('../../litert-wasm/', import.meta.url).href;
 // 4 Euler steps: ear-approved quality at ~1/3 the latency of the full 10
 // (decoder is 341 ms/call on WASM — see the model card). Override: ?steps=
 const DEFAULT_STEPS = 4;

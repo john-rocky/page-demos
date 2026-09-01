@@ -5,8 +5,17 @@ import { defineConfig } from 'vite';
 // Dev-only endpoint so the showcase can save its recorded video straight to
 // disk, bypassing the browser's download flow (which blocks programmatic,
 // non-gesture downloads). POST /__save?name=foo.webm with the blob body.
+// Same COOP/COEP the deployed site gets from coi-serviceworker, so dev and
+// preview run cross-origin isolated (threaded wasm) without the SW reload.
+const coi = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+};
+
 export default defineConfig({
   base: './',
+  server: { headers: coi },
+  preview: { headers: coi },
   build: {
     rollupOptions: {
       input: {

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 public/litert-wasm/
+public/coi-serviceworker.min.js
 
 moge-showcase.mp4
 moge-showcase.webm
