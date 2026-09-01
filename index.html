@@ -74,5 +74,13 @@
     · Not an official Google project.
   </footer>
 </main>
+<!-- GitHub Pages cannot send COOP/COEP; this service worker injects them
+     (one reload on the first visit) so every demo under this site root gets
+     cross-origin isolation and threaded WASM. Registered from the site root:
+     a dedicated worker is matched to a service worker by the WORKER SCRIPT
+     URL, so the shared litert-wasm/ dir must sit inside the SW scope or
+     thread workers boot without COEP and die. -->
+<script>window.coi = { coepCredentialless: () => false };</script>
+<script src="./coi-serviceworker.min.js"></script>
 </body>
 </html>
